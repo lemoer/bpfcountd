@@ -4,8 +4,8 @@ CFLAGS=-Wall -Werror -ggdb
 LDFLAGS=-lpcap
 NAME=app
 
-app: main.o list.o
-	$(CC) ${LDFLAGS} main.o list.o -o ${NAME}
+app: main.o list.o usock.o
+	$(CC) ${LDFLAGS} main.o list.o usock.o -o ${NAME}
 
 all: test app
 
