@@ -94,13 +94,12 @@ int main(int argc, char *argv[]) {
 	int usock_client;
 
 	if (signal(SIGINT, sigint_handler) == SIG_ERR)
-		fprintf(stderr, "can't establish SIGINT handler");
+		fprintf(stderr, "Can't establish SIGINT handler.");
 
 	g_handle = handle;
 
 	if (handle == NULL)
 		return 2;
-
 
   filters = list_new();
 
