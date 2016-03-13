@@ -120,6 +120,15 @@ int main(int argc, char *argv[]) {
 			usock_finish(usock_client);
 		}
 	}
+
+	// free the filters
+	list_foreach(filters, f) {
+		struct filter *tmp = list_data(f, struct filter);
+
+		free(tmp->bpf);
+		free(tmp);
+	}
+
 	list_free(filters);
 	pcap_close(handle);
 	usock_finish(usock);
