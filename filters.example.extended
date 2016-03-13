@@ -1,0 +1,17 @@
+type="arp",subtype="request",who="other";arp[6:2] == 1 and not ether src $MAC
+type="arp",subtype="request",who="other";arp[6:2] == 1 and ether src $MAC
+type="arp",subtype="reply",gratious="false",who="other";not ether broadcast and arp[6:2] == 2 and not ether src $MAC
+type="arp",subtype="reply",gratious="false",who="me";not ether broadcast and arp[6:2] == 2 and ether src $MAC
+type="arp",subtype="reply",gratious="true";ether broadcast and arp[6:2] == 2
+type="icmp6",subtype="router-sol";icmp6 and ip6[40] == 133
+type="icmp6",subtype="router-adv",who="other";icmp6 and ip6[40] == 134 and not ether src $MAC
+type="icmp6",subtype="router-adv",who="me";icmp6 and ip6[40] == 134 and ether src $MAC
+type="icmp6",subtype="neigh-sol",who="other";icmp6 and ip6[40] == 135 and not ether src $MAC
+type="icmp6",subtype="neigh-sol",who="me";icmp6 and ip6[40] == 135 and ether src $MAC
+type="icmp6",subtype="neigh-adv",who="other";icmp6 and ip6[40] == 136 and not ether src $MAC
+type="icmp6",subtype="neigh-adv",who="me";icmp6 and ip6[40] == 136 and ether src $MAC
+type="dhcp",subtype="request";udp and src port 68
+type="dhcp",subtype="offer"; udp and src port 67 
+type="dns",subtype="query";udp and port 53 and ((udp[11]&0x80) != 0x80 or (ip6[51]&0x80) != 0x80)
+type="dns",subtype="response";udp and port 53 and ((udp[11]&0x80) == 0x80 or (ip6[51]&0x80) == 0x80)
+
