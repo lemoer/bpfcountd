@@ -1,21 +1,11 @@
-#include <strings.h>
-#include <stdlib.h>
-#include <stdio.h>
 #include <pcap.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netinet/if_ether.h>
-#include <net/if_arp.h>
-#include <netinet/ether.h>
-#include <signal.h>
 #include <ctype.h>
+#include <signal.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include "usock.h"
 #include "list.h"
-
-#define SIZE_ETHERNET 14
 
 struct config {
 	const char *device;
