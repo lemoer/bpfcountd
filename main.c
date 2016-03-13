@@ -8,6 +8,7 @@
 #include <netinet/if_ether.h>
 #include <net/if_arp.h>
 #include <netinet/ether.h>
+#include <signal.h>
 
 #include "usock.h"
 #include "list.h"
@@ -76,15 +77,22 @@ void add_filter(struct list* filters, const char* descr, const char* bpf) {
 	list_insert(filters, tmp);
 }
 
-// TODO: implement a signal handler
+int term = 0;
+
+void sigint_handler(int signo) {
+		term = 1;
+}
 
 int main(int argc, char *argv[]) {
 	pcap_t *handle = open_pcap(argc, argv);
 	int usock = usock_prepare("test.sock");
 	int usock_client;
 
+	if (signal(SIGINT, sigint_handler) == SIG_ERR)
+		fprintf(stderr, "can't establish SIGINT handler");
+
 	g_handle = handle;
-	
+
 	if (handle == NULL)
 		return 2;
 
@@ -96,7 +104,7 @@ int main(int argc, char *argv[]) {
 	add_filter(filters, "arp-rep-grat", "ether broadcast and arp[6:2] == 2");
 
 	// TODO: find out if the method drops packets
-	while(1) {
+	while(term == 0) {
 		pcap_dispatch(handle, 100, callback, NULL);
 		if((usock_client = usock_accept(usock)) != -1) {
 
