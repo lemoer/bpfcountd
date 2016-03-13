@@ -72,8 +72,13 @@ void add_filter(struct list* filters, const char* descr, const char* bpf) {
 	tmp->bpf = (struct bpf_program*) malloc(sizeof(struct bpf_program));
 	tmp->packets_count = 0;
 	tmp->bytes_count = 0;
-	pcap_compile(g_handle, tmp->bpf, bpf, 0, 0); //TODO return value && PCAP_NET_UNKNOWN foobar
+
 	
+	if (pcap_compile(g_handle, tmp->bpf, bpf, 0, PCAP_NETMASK_UNKNOWN) == -1) {
+		fprintf(stderr, "Error at compiling bpf \"%s\": %s\n", bpf, pcap_geterr(g_handle));
+		exit(1);
+	}
+
 	list_insert(filters, tmp);
 }
 
