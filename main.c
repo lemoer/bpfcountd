@@ -187,7 +187,7 @@ void read_filters() {
 int term = 0;
 
 void sigint_handler(int signo) {
-		term = 1;
+	term = 1;
 }
 
 int main(int argc, char *argv[]) {
