@@ -80,7 +80,7 @@ pcap_t *open_pcap() {
 	// TODO: there could be a warning in errbuf even if handle != NULL
 	if (handle == NULL) {
 		fprintf(stderr, "Couldn't open device %s\n", errbuf);
-		return NULL;
+		exit(1);
 	}
 	
 	fprintf(stderr, "Device: %s\n", config->device);
@@ -188,9 +188,6 @@ int main(int argc, char *argv[]) {
 
 	pcap_t *handle = open_pcap();
 	g_handle = handle;
-
-	if (handle == NULL)
-		return 2;
 
 	filters = list_new();
 	read_filters();
