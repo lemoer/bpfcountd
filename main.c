@@ -92,7 +92,7 @@ pcap_t *open_pcap() {
 pcap_t* g_handle = NULL;
 
 struct filter {
-	const char *id;
+	char *id;
 	struct bpf_program *bpf;
 	unsigned long long packets_count;
 	unsigned long long bytes_count;
@@ -112,7 +112,7 @@ void callback(u_char *useless, const struct pcap_pkthdr *pkthdr, const u_char *p
 	}
 }
 
-void add_filter(struct list* filters, const char* id, const char* bpf) {
+void add_filter(struct list* filters, char* id, const char* bpf) {
 	struct filter* tmp = (struct filter*) malloc(sizeof(struct filter));
 
 	tmp->id = id;
@@ -152,8 +152,8 @@ void read_filters() {
 		if (read == 1)
 			continue;
 
-		const char *id = strtok(line, ";");
-		const char *bpf = strtok(NULL, ";");
+		char *id = strtok(line, ";");
+		char *bpf = strtok(NULL, ";");
 
 		if (id == NULL || bpf == NULL) {
 			fprintf(stderr, "Wrong format in filterfile in line %d.\n", line_no);
@@ -168,6 +168,9 @@ void read_filters() {
 		fprintf(stderr, "id: %s; bpf: \"%s\";\n", id, bpf);
 
 		add_filter(filters, id, bpf);
+
+		// the bpf is not needed anymore
+		free(bpf);
 	}
 
 	free(line);
@@ -221,6 +224,7 @@ int main(int argc, char *argv[]) {
 	list_foreach(filters, f) {
 		struct filter *tmp = list_data(f, struct filter);
 
+		free(tmp->id);
 		free(tmp->bpf);
 		free(tmp);
 	}
