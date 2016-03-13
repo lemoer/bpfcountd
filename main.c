@@ -130,7 +130,7 @@ void add_filter(struct list* filters, char* id, const char* bpf) {
 
 void read_filters() {
 	if (config->filters_path == NULL) {
-		fprintf(stderr, "You have to supply a filterfile -f <file>.");
+		fprintf(stderr, "You have to supply a filterfile -f <file>.\n");
 		exit(1);
 	}
 
