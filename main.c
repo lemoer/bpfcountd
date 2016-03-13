@@ -19,22 +19,27 @@
 
 struct config {
 	const char *device;
+	const char *filters_path;
 };
 
 struct config *config;
 
 void help(const char* path) {
-	fprintf(stderr, "%s -i <interface> [-h]\n", path);
+	fprintf(stderr, "%s -i <interface> -f <filterfile> [-h]\n\n", path);
+
+	fprintf(stderr, "-f <filterfile>       a the main file where each line contains an id and a bpf\n");
+	fprintf(stderr, "                      filter, seperated by a semicolon\n");
 }
 
 void config_prepare(int argc, char *argv[]){
 	int c;
 
-	config = malloc(sizeof(config));
+	config = malloc(sizeof(struct config));
 	config->device = NULL;
+	config->filters_path = NULL;
 
 	opterr = 0;
-	while ((c = getopt(argc, argv, "hi:")) != -1) {
+	while ((c = getopt(argc, argv, "hi:f:")) != -1) {
 		switch (c) {
 		case 'i':
 			config->device = optarg;
@@ -42,6 +47,9 @@ void config_prepare(int argc, char *argv[]){
 		case 'h':
 			help(argv[0]);
 			exit(0);
+		case 'f':
+			config->filters_path = optarg;
+			break;
 		case '?':
 			if (optopt == 'i')
 				fprintf(stderr, "Option -%c requires an argument.\n", optopt);
@@ -55,6 +63,7 @@ void config_prepare(int argc, char *argv[]){
 		}
 	}
 }
+
 
 void config_finish() {
 	free(config);
@@ -87,7 +96,7 @@ pcap_t *open_pcap() {
 pcap_t* g_handle = NULL;
 
 struct filter {
-	const char *descr;
+	const char *id;
 	struct bpf_program *bpf;
 	unsigned long long packets_count;
 	unsigned long long bytes_count;
@@ -107,21 +116,66 @@ void callback(u_char *useless, const struct pcap_pkthdr *pkthdr, const u_char *p
 	}
 }
 
-void add_filter(struct list* filters, const char* descr, const char* bpf) {
+void add_filter(struct list* filters, const char* id, const char* bpf) {
 	struct filter* tmp = (struct filter*) malloc(sizeof(struct filter));
 
-	tmp->descr = descr;
+	tmp->id = id;
 	tmp->bpf = (struct bpf_program*) malloc(sizeof(struct bpf_program));
 	tmp->packets_count = 0;
 	tmp->bytes_count = 0;
 
-	
 	if (pcap_compile(g_handle, tmp->bpf, bpf, 0, PCAP_NETMASK_UNKNOWN) == -1) {
 		fprintf(stderr, "Error at compiling bpf \"%s\": %s\n", bpf, pcap_geterr(g_handle));
 		exit(1);
 	}
 
 	list_insert(filters, tmp);
+}
+
+void read_filters() {
+	if (config->filters_path == NULL) {
+		fprintf(stderr, "You have to supply a filterfile -f <file>.");
+		exit(1);
+	}
+
+	FILE *fp = fopen(config->filters_path, "r");
+	char *line = NULL;
+	size_t read = 0;
+	int line_no = 0;
+
+	if (fp == NULL) {
+		perror("Error while opening the file");
+		exit(1);
+	}
+
+	while ((read = getline(&line, &read, fp)) != -1) {
+		line_no++;
+		line[read-1] = 0; // remove the \n at the end of the line
+
+		// skip the line if it's empty
+		if (read == 1)
+			continue;
+
+		const char *id = strtok(line, ";");
+		const char *bpf = strtok(NULL, ";");
+
+		if (id == NULL || bpf == NULL) {
+			fprintf(stderr, "Wrong format in filterfile in line %d.\n", line_no);
+			exit(1);
+		}
+
+		// create new buffers for id and bpf, since they will get
+		// free when line will be free
+		id = strdup(id);
+		bpf = strdup(bpf);
+
+		fprintf(stderr, "id: %s; bpf: \"%s\";\n", id, bpf);
+
+		add_filter(filters, id, bpf);
+	}
+
+	free(line);
+	fclose(fp);
 }
 
 int term = 0;
@@ -133,23 +187,21 @@ void sigint_handler(int signo) {
 int main(int argc, char *argv[]) {
 	config_prepare(argc, argv);
 
-	pcap_t *handle = open_pcap(argc, argv);
+	pcap_t *handle = open_pcap();
+	g_handle = handle;
+
+	if (handle == NULL)
+		return 2;
+
+	filters = list_new();
+	read_filters();
+
 	int usock = usock_prepare("test.sock");
 	int usock_client;
 
 	if (signal(SIGINT, sigint_handler) == SIG_ERR)
 		fprintf(stderr, "Can't establish SIGINT handler.");
 
-	g_handle = handle;
-
-	if (handle == NULL)
-		return 2;
-
-  filters = list_new();
-
-	add_filter(filters, "arp-req", "arp[6:2] == 1");
-	add_filter(filters, "arp-rep-norm", "not ether broadcast and arp[6:2] == 2");
-	add_filter(filters, "arp-rep-grat", "ether broadcast and arp[6:2] == 2");
 
 	// TODO: find out if the method drops packets
 	while(term == 0) {
@@ -161,7 +213,7 @@ int main(int argc, char *argv[]) {
 				char buf[1024];
 				memset(buf, 0x00, sizeof(buf));
 
-				snprintf(buf, sizeof(buf), "%s:%llu:%llu\n", tmp->descr, tmp->bytes_count, tmp->packets_count);
+				snprintf(buf, 1024, "%s:%llu:%llu\n", tmp->id, tmp->bytes_count, tmp->packets_count);
 				usock_sendstr(usock_client, buf);
 			}
 
