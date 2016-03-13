@@ -14,13 +14,13 @@ all: test bpfcountd
 install: bpfcountd
 	install ${NAME} /usr/local/bin/${NAME}
 	mkdir -p ${CONFDIR}
-	cp filters.example ${CONFDIR}/example.fil
-	cp filters.example.extended ${CONFDIR}/example2.fil
+	cp filters.example ${CONFDIR}/example.filters
+	cp filters.example.extended ${CONFDIR}/example2.filters
 
 uninstall:
 	rm -f /usr/local/bin/${NAME}
-	rm -f ${CONFDIR}/example.fil
-	rm -f ${CONFDIR}/example2.fil
+	rm -f ${CONFDIR}/example.filters
+	rm -f ${CONFDIR}/example2.filters
 	rmdir --ignore-fail-on-non-empty ${CONFDIR}
 
 test: test_list.o list.o
