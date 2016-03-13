@@ -1,4 +1,4 @@
 arp-req;arp[6:2] == 1
 arp-rep-norm;not ether broadcast and arp[6:2] == 2
-arp-rep-grat;ether broadcast and arp[6:2] == 2
+arp-rep-grat;ether broadcast and arp[6:2] == 2 and ether src $MAC
 

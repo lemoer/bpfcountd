@@ -11,6 +11,7 @@ struct config {
 	const char *device;
 	const char *filters_path;
 	const char *usock_path;
+	char *mac_addr;
 };
 
 struct config *config;
@@ -30,6 +31,7 @@ void config_prepare(int argc, char *argv[]){
 	config->device = NULL;
 	config->filters_path = NULL;
 	config->usock_path = "test.sock";
+	config->mac_addr = NULL;
 
 	opterr = 0;
 	while ((c = getopt(argc, argv, "hi:f:u:")) != -1) {
@@ -58,10 +60,34 @@ void config_prepare(int argc, char *argv[]){
 			abort();
 		}
 	}
+
+	// load the mac address
+
+	// mac is 17 bytes + \0
+	#define MAC_STRLEN 18
+	char *mac_addr = malloc(MAC_STRLEN);
+	char addr_path[140];
+
+	// TODO: how long must be size
+  snprintf(addr_path, 140, "/sys/class/net/%s/address", config->device);
+
+	FILE *fp;
+	fp = fopen(addr_path, "r");
+
+	if (fp == NULL) {
+		fprintf(stderr, "Interface in %s not found\n", addr_path);
+		exit(1);
+	}
+
+	fgets(mac_addr, MAC_STRLEN, fp);
+	fclose(fp);
+
+	config->mac_addr = mac_addr;
 }
 
 
 void config_finish() {
+	free(config->mac_addr);
 	free(config);
 }
 
@@ -128,6 +154,33 @@ void add_filter(struct list* filters, char* id, const char* bpf) {
 	list_insert(filters, tmp);
 }
 
+void strnrepl(const char *token, const char *replace, char *str, size_t n) {
+	char *ptr = str;
+	char *p_behind;
+	size_t length_new = strlen(str);
+
+	while (1) {
+		// find next occurance of token
+		ptr = strstr(ptr, token);
+
+		if (ptr == NULL)
+			// no occurence found.
+			return;
+
+		// calculate the new length and check for overflow
+		length_new += strlen(replace) - strlen(token);
+		if (length_new >= n)
+			return;
+
+		// this points to the position behind the token
+		p_behind = ptr + strlen(token);
+
+		memmove(ptr + strlen(replace), p_behind, strlen(p_behind));
+		memcpy(ptr, replace, strlen(replace));
+		str[length_new] = 0x00;
+	}
+}
+
 void read_filters() {
 	if (config->filters_path == NULL) {
 		fprintf(stderr, "You have to supply a filterfile -f <file>.\n");
@@ -153,9 +206,9 @@ void read_filters() {
 			continue;
 
 		char *id = strtok(line, ";");
-		char *bpf = strtok(NULL, ";");
+		char *bpf_tmp = strtok(NULL, ";");
 
-		if (id == NULL || bpf == NULL) {
+		if (id == NULL || bpf_tmp == NULL) {
 			fprintf(stderr, "Wrong format in filterfile in line %d.\n", line_no);
 			exit(1);
 		}
@@ -163,7 +216,9 @@ void read_filters() {
 		// create new buffers for id and bpf, since they will get
 		// free when line will be free
 		id = strdup(id);
-		bpf = strdup(bpf);
+		char *bpf = malloc(4096);
+		strncpy(bpf, bpf_tmp, 4096);
+		strnrepl("$MAC", config->mac_addr, bpf, 4096);
 
 		fprintf(stderr, "id: %s; bpf: \"%s\";\n", id, bpf);
 
