@@ -20,15 +20,17 @@
 struct config {
 	const char *device;
 	const char *filters_path;
+	const char *usock_path;
 };
 
 struct config *config;
 
 void help(const char* path) {
-	fprintf(stderr, "%s -i <interface> -f <filterfile> [-h]\n\n", path);
+	fprintf(stderr, "%s -i <interface> -f <filterfile> [-u <unixpath>] [-h]\n\n", path);
 
 	fprintf(stderr, "-f <filterfile>       a the main file where each line contains an id and a bpf\n");
 	fprintf(stderr, "                      filter, seperated by a semicolon\n");
+	fprintf(stderr, "-u <unixpath>         path to the unix info socket (default is ./test.sock)\n");
 }
 
 void config_prepare(int argc, char *argv[]){
@@ -37,9 +39,10 @@ void config_prepare(int argc, char *argv[]){
 	config = malloc(sizeof(struct config));
 	config->device = NULL;
 	config->filters_path = NULL;
+	config->usock_path = "test.sock";
 
 	opterr = 0;
-	while ((c = getopt(argc, argv, "hi:f:")) != -1) {
+	while ((c = getopt(argc, argv, "hi:f:u:")) != -1) {
 		switch (c) {
 		case 'i':
 			config->device = optarg;
@@ -47,6 +50,9 @@ void config_prepare(int argc, char *argv[]){
 		case 'h':
 			help(argv[0]);
 			exit(0);
+		case 'u':
+			config->usock_path = optarg;
+			break;
 		case 'f':
 			config->filters_path = optarg;
 			break;
@@ -196,7 +202,7 @@ int main(int argc, char *argv[]) {
 	filters = list_new();
 	read_filters();
 
-	int usock = usock_prepare("test.sock");
+	int usock = usock_prepare(config->usock_path);
 	int usock_client;
 
 	if (signal(SIGINT, sigint_handler) == SIG_ERR)
