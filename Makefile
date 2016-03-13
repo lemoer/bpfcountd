@@ -9,6 +9,9 @@ bpfcountd: main.o list.o usock.o
 
 all: test bpfcountd
 
+install: bpfcountd
+	install ${NAME} /usr/local/bin/${NAME}
+
 test: test_list.o list.o
 	$(CC) ${LDFLAGS} test_list.o list.o -o test
 
