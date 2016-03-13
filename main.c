@@ -193,7 +193,8 @@ void read_filters() {
 	int line_no = 0;
 
 	if (fp == NULL) {
-		perror("Error while opening the file");
+		fprintf(stderr, "Error while opening the filterfile '%s': ", config->filters_path);
+		perror("");
 		exit(1);
 	}
 
