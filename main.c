@@ -9,34 +9,76 @@
 #include <net/if_arp.h>
 #include <netinet/ether.h>
 #include <signal.h>
+#include <ctype.h>
+#include <unistd.h>
 
 #include "usock.h"
 #include "list.h"
 
 #define SIZE_ETHERNET 14
 
-pcap_t *open_pcap(int argc, char* argv[]) {
-	char *dev;
+struct config {
+	const char *device;
+};
+
+struct config *config;
+
+void help(const char* path) {
+	fprintf(stderr, "%s -i <interface> [-h]\n", path);
+}
+
+void config_prepare(int argc, char *argv[]){
+	int c;
+
+	config = malloc(sizeof(config));
+	config->device = NULL;
+
+	opterr = 0;
+	while ((c = getopt(argc, argv, "hi:")) != -1) {
+		switch (c) {
+		case 'i':
+			config->device = optarg;
+			break;
+		case 'h':
+			help(argv[0]);
+			exit(0);
+		case '?':
+			if (optopt == 'i')
+				fprintf(stderr, "Option -%c requires an argument.\n", optopt);
+			else if (isprint (optopt))
+				fprintf(stderr, "Unknown option -%c.\n", optopt);
+			else
+				fprintf(stderr, "Unknown option character \\x%x.\n", optopt);
+			exit(1);
+		default:
+			abort();
+		}
+	}
+}
+
+void config_finish() {
+	free(config);
+}
+
+pcap_t *open_pcap() {
 	char errbuf[PCAP_ERRBUF_SIZE];
 	pcap_t *handle;
 
 	bzero(&errbuf, sizeof(errbuf));
 
-	if (argc > 1) {
-		dev = argv[1];
-	} else {
-		fprintf(stderr, "You have to supply an interface as first parameter!\n");
+	if (config->device == NULL) {
+		fprintf(stderr, "You have to supply an interface -i <interface>.\n");
 		exit(1);
 	}
 
-	handle = pcap_open_live(dev, BUFSIZ, 1, 1000, errbuf);
+	handle = pcap_open_live(config->device, BUFSIZ, 1, 1000, errbuf);
 	// TODO: there could be a warning in errbuf even if handle != NULL
 	if (handle == NULL) {
 		fprintf(stderr, "Couldn't open device %s\n", errbuf);
 		return NULL;
 	}
 	
-	fprintf(stderr, "Device: %s\n", dev);
+	fprintf(stderr, "Device: %s\n", config->device);
 	return handle;
 }
 
@@ -89,6 +131,8 @@ void sigint_handler(int signo) {
 }
 
 int main(int argc, char *argv[]) {
+	config_prepare(argc, argv);
+
 	pcap_t *handle = open_pcap(argc, argv);
 	int usock = usock_prepare("test.sock");
 	int usock_client;
@@ -136,5 +180,6 @@ int main(int argc, char *argv[]) {
 	list_free(filters);
 	pcap_close(handle);
 	usock_finish(usock);
+	config_finish();
 	return 0;
 }
