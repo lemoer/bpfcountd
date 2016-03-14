@@ -17,7 +17,8 @@ void list_free(struct list* list);
 void list_insert(struct list* list, void* data);
 
 #define list_foreach(list, list_item_name) \
-	for(struct list_item* list_item_name = list->first; \
+	struct list_item* list_item_name; \
+	for(list_item_name = list->first; \
 			list_item_name != NULL; \
 			list_item_name = list_item_name->next)
 
