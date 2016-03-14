@@ -68,6 +68,9 @@ The format is:
 <identifier>;<bpf>
 ```
 
+You can use the ```$MAC``` token in your bpf and it will be replaces by the mac address
+of the interface at runtime.
+
 **Start**
 
 ``` shell
