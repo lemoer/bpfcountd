@@ -69,7 +69,7 @@ void config_prepare(int argc, char *argv[]){
 	char addr_path[140];
 
 	// TODO: how long must be size
-  snprintf(addr_path, 140, "/sys/class/net/%s/address", config->device);
+	snprintf(addr_path, 140, "/sys/class/net/%s/address", config->device);
 
 	FILE *fp;
 	fp = fopen(addr_path, "r");
