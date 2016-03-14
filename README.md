@@ -7,14 +7,16 @@ tcpdump filter syntax. This daemon was created to monitor the broadcast traffic
 in a large layer2 network like the freifunk batman-adv mesh.
 
 
-## dependencies
+## Dependencies
 
 * libpcap
 
 
-## example
+## Example
 
 You can define multiple bpf and assign an identifier to each of them.
+
+**Filters**
 
 ```
 arp-me;arp and ether src $MAC
@@ -26,6 +28,8 @@ The statistics are exported via unix socket. The path is configurable by a
 command line parameter. (I recomment openbsd-netcat to read the unix socket
 from your shell.) The format is ```<identifier>:<bytes>:<packetcount>```.
 
+**Results**
+
 ```
 arp-me:450:10
 icmp6:100:4
@@ -33,7 +37,7 @@ arp-reply-gratious:120:30
 ```
 
 
-## howto
+## HowTo
 
 **Installation**
 
