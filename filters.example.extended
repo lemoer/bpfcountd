@@ -1,5 +1,5 @@
 type="arp",subtype="request",who="other";arp[6:2] == 1 and not ether src $MAC
-type="arp",subtype="request",who="other";arp[6:2] == 1 and ether src $MAC
+type="arp",subtype="request",who="me";arp[6:2] == 1 and ether src $MAC
 type="arp",subtype="reply",gratious="false",who="other";not ether broadcast and arp[6:2] == 2 and not ether src $MAC
 type="arp",subtype="reply",gratious="false",who="me";not ether broadcast and arp[6:2] == 2 and ether src $MAC
 type="arp",subtype="reply",gratious="true";ether broadcast and arp[6:2] == 2
