@@ -144,7 +144,7 @@ int main(int argc, char *argv[]) {
 
 
 	// TODO: find out if the method drops packets
-	while(term == 0) {
+	while(!term) {
 		pcap_dispatch(ctx.pcap_ctx, 100, callback, (u_char *) &ctx);
 		if((usock_client = usock_accept(usock)) != -1) {
 
