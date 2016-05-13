@@ -4,17 +4,41 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "util.h"
+#include "filters.h"
 #include "usock.h"
 #include "list.h"
+
 
 struct config {
 	const char *device;
 	const char *filters_path;
 	const char *usock_path;
-	char *mac_addr;
+	char mac_addr[MAC_STRLEN];
 };
 
-struct config *config;
+typedef struct {
+	struct config config;
+	filters_ctx filters_ctx;
+
+	pcap_t *pcap_ctx;
+} bpfcountd_ctx;
+
+
+void prepare_pcap(bpfcountd_ctx *ctx, const char* device) {
+	char errbuf[PCAP_ERRBUF_SIZE];
+
+	memset(&errbuf, 0, sizeof(errbuf));
+
+	ctx->pcap_ctx = pcap_open_live(device, BUFSIZ, 1, 1000, errbuf);
+	// TODO: there could be a warning in errbuf even if handle != NULL
+	if (!ctx->pcap_ctx) {
+		fprintf(stderr, "Couldn't open device %s\n", errbuf);
+		exit(1);
+	}
+
+	printf(stderr, "Device: %s\n", device);
+}
 
 void help(const char* path) {
 	fprintf(stderr, "%s -i <interface> -f <filterfile> [-u <unixpath>] [-h]\n\n", path);
@@ -24,29 +48,28 @@ void help(const char* path) {
 	fprintf(stderr, "-u <unixpath>         path to the unix info socket (default is ./test.sock)\n");
 }
 
-void config_prepare(int argc, char *argv[]){
+void prepare_config(struct config *cfg, int argc, char *argv[]){
 	int c;
 
-	config = malloc(sizeof(struct config));
-	config->device = NULL;
-	config->filters_path = NULL;
-	config->usock_path = "test.sock";
-	config->mac_addr = NULL;
+	// default settings
+	cfg->device = NULL;
+	cfg->filters_path = NULL;
+	cfg->usock_path = "test.sock";
 
 	opterr = 0;
 	while ((c = getopt(argc, argv, "hi:f:u:")) != -1) {
 		switch (c) {
 		case 'i':
-			config->device = optarg;
+			cfg->device = optarg;
 			break;
 		case 'h':
 			help(argv[0]);
 			exit(0);
 		case 'u':
-			config->usock_path = optarg;
+			cfg->usock_path = optarg;
 			break;
 		case 'f':
-			config->filters_path = optarg;
+			cfg->filters_path = optarg;
 			break;
 		case '?':
 			if (optopt == 'i')
@@ -61,176 +84,25 @@ void config_prepare(int argc, char *argv[]){
 		}
 	}
 
-	// load the mac address
-
-	// mac is 17 bytes + \0
-	#define MAC_STRLEN 18
-	char *mac_addr = malloc(MAC_STRLEN);
-	char addr_path[140];
-
-	// TODO: how long must be size
-	snprintf(addr_path, 140, "/sys/class/net/%s/address", config->device);
-
-	FILE *fp;
-	fp = fopen(addr_path, "r");
-
-	if (fp == NULL) {
-		fprintf(stderr, "Interface in %s not found\n", addr_path);
+	if (!cfg->device) {
+		fprintf(stderr, "No interface was was set.\n");
 		exit(1);
 	}
 
-	fgets(mac_addr, MAC_STRLEN, fp);
-	fclose(fp);
+	get_mac(cfg->mac_addr, cfg->device);
 
-	config->mac_addr = mac_addr;
-}
-
-
-void config_finish() {
-	free(config->mac_addr);
-	free(config);
-}
-
-pcap_t *open_pcap() {
-	char errbuf[PCAP_ERRBUF_SIZE];
-	pcap_t *handle;
-
-	bzero(&errbuf, sizeof(errbuf));
-
-	if (config->device == NULL) {
-		fprintf(stderr, "You have to supply an interface -i <interface>.\n");
-		exit(1);
-	}
-
-	handle = pcap_open_live(config->device, BUFSIZ, 1, 1000, errbuf);
-	// TODO: there could be a warning in errbuf even if handle != NULL
-	if (handle == NULL) {
-		fprintf(stderr, "Couldn't open device %s\n", errbuf);
-		exit(1);
-	}
-	
-	fprintf(stderr, "Device: %s\n", config->device);
-	return handle;
-}
-
-
-// TODO: pack this in "useless"
-pcap_t* g_handle = NULL;
-
-struct filter {
-	char *id;
-	struct bpf_program *bpf;
-	unsigned long long packets_count;
-	unsigned long long bytes_count;
-};
-
-struct list* filters;
-
-void callback(u_char *useless, const struct pcap_pkthdr *pkthdr, const u_char *packet)
-{
-	list_foreach(filters, f) {
-		struct filter *tmp = list_data(f, struct filter);
-		
-		if (pcap_offline_filter(tmp->bpf, pkthdr, packet)) {
-			tmp->packets_count += 1;
-			tmp->bytes_count += pkthdr->len;
-		}
-	}
-}
-
-void add_filter(struct list* filters, char* id, const char* bpf) {
-	struct filter* tmp = (struct filter*) malloc(sizeof(struct filter));
-
-	tmp->id = id;
-	tmp->bpf = (struct bpf_program*) malloc(sizeof(struct bpf_program));
-	tmp->packets_count = 0;
-	tmp->bytes_count = 0;
-
-	if (pcap_compile(g_handle, tmp->bpf, bpf, 0, PCAP_NETMASK_UNKNOWN) == -1) {
-		fprintf(stderr, "Error at compiling bpf \"%s\": %s\n", bpf, pcap_geterr(g_handle));
-		exit(1);
-	}
-
-	list_insert(filters, tmp);
-}
-
-void strnrepl(const char *token, const char *replace, char *str, size_t n) {
-	char *ptr = str;
-	char *p_behind;
-	size_t length_new = strlen(str);
-
-	while (1) {
-		// find next occurance of token
-		ptr = strstr(ptr, token);
-
-		if (ptr == NULL)
-			// no occurence found.
-			return;
-
-		// calculate the new length and check for overflow
-		length_new += strlen(replace) - strlen(token);
-		if (length_new >= n)
-			return;
-
-		// this points to the position behind the token
-		p_behind = ptr + strlen(token);
-
-		memmove(ptr + strlen(replace), p_behind, strlen(p_behind));
-		memcpy(ptr, replace, strlen(replace));
-		str[length_new] = 0x00;
-	}
-}
-
-void read_filters() {
-	if (config->filters_path == NULL) {
+	if (!cfg->filters_path) {
 		fprintf(stderr, "You have to supply a filterfile -f <file>.\n");
 		exit(1);
 	}
 
-	FILE *fp = fopen(config->filters_path, "r");
-	char *line = NULL;
-	size_t read = 0;
-	int line_no = 0;
+}
 
-	if (fp == NULL) {
-		fprintf(stderr, "Error while opening the filterfile '%s': ", config->filters_path);
-		perror("");
-		exit(1);
-	}
 
-	while ((read = getline(&line, &read, fp)) != -1) {
-		line_no++;
-		line[read-1] = 0; // remove the \n at the end of the line
-
-		// skip the line if it's empty
-		if (read == 1)
-			continue;
-
-		char *id = strtok(line, ";");
-		char *bpf_tmp = strtok(NULL, ";");
-
-		if (id == NULL || bpf_tmp == NULL) {
-			fprintf(stderr, "Wrong format in filterfile in line %d.\n", line_no);
-			exit(1);
-		}
-
-		// create new buffers for id and bpf, since they will get
-		// free when line will be free
-		id = strdup(id);
-		char *bpf = malloc(4096);
-		strncpy(bpf, bpf_tmp, 4096);
-		strnrepl("$MAC", config->mac_addr, bpf, 4096);
-
-		fprintf(stderr, "id: %s; bpf: \"%s\";\n", id, bpf);
-
-		add_filter(filters, id, bpf);
-
-		// the bpf is not needed anymore
-		free(bpf);
-	}
-
-	free(line);
-	fclose(fp);
+void callback(u_char *ptr, const struct pcap_pkthdr *pkthdr, const u_char *packet)
+{
+	bpfcountd_ctx *ctx = (bpfcountd_ctx *) ptr;
+	filters_process(&ctx->filters_ctx, pkthdr, packet);
 }
 
 int term = 0;
@@ -239,16 +111,32 @@ void sigint_handler(int signo) {
 	term = 1;
 }
 
+void bpfcountd_init(bpfcountd_ctx *ctx, int argc, char *argv[]) {
+	prepare_config(&ctx->config, argc, argv);
+
+	// get a pcap handle
+	prepare_pcap(ctx, ctx->config.device);
+
+	// initialize the filter unit
+	filters_init(&ctx->filters_ctx, ctx->pcap_ctx);
+	filters_load(
+		&ctx->filters_ctx,
+		ctx->config.filters_path,
+		ctx->config.mac_addr
+	);
+}
+
+void bpfcountd_finish(bpfcountd_ctx *ctx) {
+	pcap_close(ctx->pcap_ctx);
+	filters_finish(&ctx->filters_ctx);
+}
+
 int main(int argc, char *argv[]) {
-	config_prepare(argc, argv);
+	bpfcountd_ctx ctx = {};
 
-	pcap_t *handle = open_pcap();
-	g_handle = handle;
+	bpfcountd_init(&ctx, argc, argv);
 
-	filters = list_new();
-	read_filters();
-
-	int usock = usock_prepare(config->usock_path);
+	int usock = usock_prepare(ctx.config.usock_path);
 	int usock_client;
 
 	if (signal(SIGINT, sigint_handler) == SIG_ERR)
@@ -257,10 +145,10 @@ int main(int argc, char *argv[]) {
 
 	// TODO: find out if the method drops packets
 	while(term == 0) {
-		pcap_dispatch(handle, 100, callback, NULL);
+		pcap_dispatch(ctx.pcap_ctx, 100, callback, (u_char *) &ctx);
 		if((usock_client = usock_accept(usock)) != -1) {
 
-			list_foreach(filters, f) {
+			list_foreach(ctx.filters_ctx.filters, f) {
 				struct filter *tmp = list_data(f, struct filter);
 				char buf[1024];
 				memset(buf, 0x00, sizeof(buf));
@@ -273,18 +161,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	// free the filters
-	list_foreach(filters, f) {
-		struct filter *tmp = list_data(f, struct filter);
-
-		free(tmp->id);
-		free(tmp->bpf);
-		free(tmp);
-	}
-
-	list_free(filters);
-	pcap_close(handle);
 	usock_finish(usock);
-	config_finish();
+	bpfcountd_finish(&ctx);
 	return 0;
 }

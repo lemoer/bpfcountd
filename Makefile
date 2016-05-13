@@ -9,8 +9,8 @@ SYSTEMDDIR=/usr/local/lib/systemd/system
 
 ON_SYSTEMD=test -d /run/systemd/system &&
 
-bpfcountd: main.o list.o usock.o
-	$(CC) ${LDFLAGS} main.o list.o usock.o -o ${NAME}
+bpfcountd: main.o list.o usock.o filters.o util.o
+	$(CC) ${LDFLAGS} main.o list.o usock.o filters.o util.o -o ${NAME}
 
 all: test bpfcountd
 
