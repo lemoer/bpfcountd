@@ -3,7 +3,7 @@ Description=a small daemon to monitor network traffic using bpf (berkley packet 
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/bpfcountd -i %i -f /usr/local/etc/bpfcountd/%i.filters -u /var/run/bpfcountd.%i.sock
+ExecStart=/usr/local/sbin/bpfcountd -i %i -f /usr/local/etc/bpfcountd/%i.filters -u /var/run/bpfcountd.%i.sock
 RestartSec=10s
 Restart=on-failure
 
