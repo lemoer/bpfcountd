@@ -14,7 +14,9 @@ The collected data is provided on unix socket in plaintext.
 
 ## Example
 
-You can define multiple bpf and assign an identifier to each of them.
+You can define multiple rules using the bpf syntax and assign an
+identifier to each of them. The format is ```<identifier>;<bpf>```.
+See example below:
 
 **Filters**
 
@@ -25,8 +27,7 @@ arp-reply-gratious;ether broadcast and arp[6:2] == 2
 ```
 
 The statistics are exported via unix socket. The path is configurable by a
-command line parameter. (I recomment openbsd-netcat to read the unix socket
-from your shell.) The format is ```<identifier>:<bytes>:<packetcount>```.
+command line parameter. The format of the output is ```<identifier>:<bytes>:<packetcount>```.
 
 **Results**
 
@@ -63,17 +64,18 @@ bpfcountd -i <interface> -f <filterfile> [-u <unixpath>] [-h]
 
 **Configuration**
 
-Create ```/usr/local/etc/bpfcountd/<interface>.filters```. (Maybe you can simply take
-one of the example files in ```/usr/local/etc/bpfcountd/``` first.)
+Create ```/usr/local/etc/bpfcountd/<interface>.filters```. Or you can take
+one of the example files in ```/usr/local/etc/bpfcountd/``` first.
 
-The format is:
+The format of the filter file:
 ```
-<identifier>;<bpf>
-<identifier>;<bpf>
+<identifier1>;<bpf>
+<identifier2>;<bpf>
 ```
 
-You can use the ```$MAC``` token in your bpf and it will be replaces by the mac address
-of the interface at runtime.
+You can use the ```$MAC``` placeholder in your bpf and it will be
+replaced by the mac address of the interface at runtime.
+
 
 **Start**
 
