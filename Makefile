@@ -18,9 +18,6 @@ install: bpfcountd
 	install -Dm 644 filters.example.extended ${CONFDIR}/example2.filters
 
 uninstall:
-	rm -f ${CONFDIR}/example.filters
-	rm -f ${CONFDIR}/example2.filters
-	rmdir --ignore-fail-on-non-empty ${CONFDIR}
 	rm -f ${PREFIX}/sbin/${NAME}
 
 test: test_list.o list.o
