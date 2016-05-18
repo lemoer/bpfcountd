@@ -37,13 +37,15 @@ icmp6:100:4
 arp-reply-gratious:120:30
 ```
 
-
 ## HowTo
 
 **Installation**
 
 ``` shell
-$> apt-get install libpcap-dev netcat-openbsd
+$> # install the dependencies on debian
+$> apt-get install libpcap-dev
+$>
+$> # install bpfcountd (all platforms)
 $> git clone <url>
 $> cd bpfcountd
 $> make
@@ -60,7 +62,6 @@ bpfcountd -i <interface> -f <filterfile> [-u <unixpath>] [-h]
                       filter, seperated by a semicolon
 -u <unixpath>         path to the unix info socket (default is ./test.sock)
 ```
-
 
 **Configuration**
 
