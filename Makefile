@@ -13,9 +13,9 @@ bpfcountd: main.o list.o usock.o filters.o util.o
 all: test bpfcountd
 
 install: bpfcountd
-	cp filters.example ${CONFDIR}/example.filters
-	cp filters.example.extended ${CONFDIR}/example2.filters
 	install -Dm 755 ${NAME} ${PREFIX}/sbin/${NAME}
+	install -Dm 644 filters.example ${CONFDIR}/example.filters
+	install -Dm 644 filters.example.extended ${CONFDIR}/example2.filters
 
 uninstall:
 	rm -f ${CONFDIR}/example.filters
