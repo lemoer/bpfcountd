@@ -76,6 +76,15 @@ The format of the filter file:
 You can use the ```$MAC``` placeholder in your bpf and it will be
 replaced by the mac address of the interface at runtime.
 
+**Results**
+
+I recommend openbsd-netcat to read the unix socket from your shell.
+
+``` shell
+$> nc -U /var/run/bpfcountd.<interface>.sock
+```
+
+## systemd integration
 
 **Start**
 
@@ -87,10 +96,4 @@ $> systemctl start bpfcountd@<interface>
 
 ``` shell
 $> systemctl enable bpfcountd@<interface>
-```
-
-**Results**
-
-``` shell
-$> nc -U /var/run/bpfcountd.<interface>.sock
 ```
