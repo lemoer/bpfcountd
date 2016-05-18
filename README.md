@@ -113,7 +113,7 @@ $> systemctl start bpfcountd@<interface>
 $> systemctl enable bpfcountd@<interface>
 ```
 
-**Unix socket path*
+**Unix socket path**
 
 ```
 /var/run/bpfcountd.<interface>.sock
