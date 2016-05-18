@@ -12,6 +12,20 @@ The collected data is provided on unix socket in plaintext.
 * libpcap
 
 
+## Supported Platforms
+
+* Tested:
+    * Arch Linux
+    * Debian
+* Should work without special regards:
+    * Any systemd based Linux distro
+* Should work after integration in init system:
+    * Linux
+* No support yet:
+    * Any other platform with libpcap support
+    * The ```get_mac(...)``` is not cross platorm yet
+
+
 ## Example
 
 You can define multiple rules using the bpf syntax and assign an
