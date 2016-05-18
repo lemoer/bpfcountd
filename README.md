@@ -1,10 +1,10 @@
 # bpfcountd
 
-You can define some bpf (berkley packet filters) for your interfaces and *bpfcountd*
-will count the amount of packages and the total bytes for each single filter for you.
-The [bpf](https://en.wikipedia.org/wiki/Berkeley_Packet_Filter) are also known as
-tcpdump filter syntax. This daemon was created to monitor the broadcast traffic
-in a large layer2 network like the freifunk batman-adv mesh.
+This daemon was created to obtain packet statistics in larger networks
+without stressing the cpu resources. *bpfcountd* will count the amount of
+packages and bytes over time (for each defined rule).  The rules are defined
+using the tcpdump filter syntax ([bpf](https://en.wikipedia.org/wiki/Berkeley_Packet_Filter)).
+The collected data is provided on unix socket in plaintext.
 
 
 ## Dependencies
