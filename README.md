@@ -64,6 +64,7 @@ $> git clone <url>
 $> cd bpfcountd
 $> make
 $> sudo make install
+$> cp dist/systemd@.service /lib/systemd/system/bpfcountd@.service
 ```
 
 **Help**
