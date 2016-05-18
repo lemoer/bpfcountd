@@ -96,7 +96,7 @@ replaced by the mac address of the interface at runtime.
 I recommend openbsd-netcat to read the unix socket from your shell.
 
 ``` shell
-$> nc -U /var/run/bpfcountd.<interface>.sock
+$> nc -U <unixpath>
 ```
 
 ## systemd integration
@@ -111,4 +111,10 @@ $> systemctl start bpfcountd@<interface>
 
 ``` shell
 $> systemctl enable bpfcountd@<interface>
+```
+
+**Unix socket path*
+
+```
+/var/run/bpfcountd.<interface>.sock
 ```
