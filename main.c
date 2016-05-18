@@ -11,8 +11,8 @@
 
 
 struct config {
-	const char *device;
-	const char *filters_path;
+	const char *device;       // TODO: rename
+	const char *filters_path; // TODO: rename
 	const char *usock_path;
 	char mac_addr[MAC_STRLEN];
 };
@@ -37,7 +37,7 @@ void prepare_pcap(bpfcountd_ctx *ctx, const char* device) {
 		exit(1);
 	}
 
-	printf(stderr, "Device: %s\n", device);
+	fprintf(stderr, "Device: %s\n", device);
 }
 
 void help(const char* path) {
@@ -52,6 +52,7 @@ void prepare_config(struct config *cfg, int argc, char *argv[]){
 	int c;
 
 	// default settings
+	// TODO: device should be iface?
 	cfg->device = NULL;
 	cfg->filters_path = NULL;
 	cfg->usock_path = "test.sock";
