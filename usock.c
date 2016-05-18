@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <errno.h>
 
 
 #include "usock.h"
@@ -42,7 +43,14 @@ int usock_accept(int sock) {
 }
 
 void usock_sendstr(int client_sock, const char* str) {
-  send(client_sock, str, strlen(str), 0);
+	if(send(client_sock, str, strlen(str), MSG_NOSIGNAL) == -1) {
+		if(errno == EPIPE) {
+			fprintf(stderr, "warning: usock client closed connection before sending data was possible\n");
+		} else {
+			perror("send");
+			exit(1);
+		}
+	}
 }
 
 void usock_finish(int sock) {
