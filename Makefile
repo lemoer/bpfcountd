@@ -8,7 +8,7 @@ PREFIX?=/usr/local
 CONFDIR?=${PREFIX}/etc/bpfcountd
 
 bpfcountd: main.o list.o usock.o filters.o util.o
-	$(CC) ${LDFLAGS} main.o list.o usock.o filters.o util.o -o ${NAME}
+	$(CC) main.o list.o usock.o filters.o util.o -o ${NAME} ${LDFLAGS}
 
 all: test bpfcountd
 
