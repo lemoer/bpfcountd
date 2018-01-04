@@ -51,6 +51,13 @@ icmp6:100:4
 arp-reply-gratious:120:30
 ```
 
+**Use with prometheus node_exporter:**
+
+Add a crontab:
+```
+* * * * * ${pathtobpfcountddir}/dist/prometheus_txtfile.sh /var/run/bpfcountd.${interface}.sock > /var/run/bpfcountd.${interface}.txt
+```
+
 ## HowTo
 
 **Installation**
