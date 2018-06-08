@@ -139,6 +139,7 @@ int main(int argc, char *argv[]) {
 
 	int usock = usock_prepare(ctx.config.usock_path);
 	int usock_client;
+	int result = 0;
 
 	if (signal(SIGINT, sigint_handler) == SIG_ERR)
 		fprintf(stderr, "Can't establish SIGINT handler.");
@@ -146,7 +147,13 @@ int main(int argc, char *argv[]) {
 
 	// TODO: find out if the method drops packets
 	while(!term) {
-		pcap_dispatch(ctx.pcap_ctx, 100, callback, (u_char *) &ctx);
+		int res = pcap_dispatch(ctx.pcap_ctx, 100, callback, (u_char *) &ctx);
+		if (res == -1) {
+			printf("ERROR: %s\n", pcap_geterr(ctx.pcap_ctx));
+			result = 1;
+			break;
+		}
+
 		if((usock_client = usock_accept(usock)) != -1) {
 
 			list_foreach(ctx.filters_ctx.filters, f) {
@@ -164,5 +171,5 @@ int main(int argc, char *argv[]) {
 
 	usock_finish(usock);
 	bpfcountd_finish(&ctx);
-	return 0;
+	return result;
 }
