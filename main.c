@@ -170,6 +170,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	usock_finish(usock);
+	unlink(ctx.config.usock_path);
 	bpfcountd_finish(&ctx);
 	return result;
 }
