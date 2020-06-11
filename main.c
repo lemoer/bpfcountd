@@ -158,10 +158,10 @@ int main(int argc, char *argv[]) {
 
 			list_foreach(ctx.filters_ctx.filters, f) {
 				struct filter *tmp = list_data(f, struct filter);
-				char buf[1024];
+				char buf[1067];
 				memset(buf, 0x00, sizeof(buf));
 
-				snprintf(buf, 1024, "%s:%llu:%llu\n", tmp->id, tmp->bytes_count, tmp->packets_count);
+				snprintf(buf, 1067, "%s:%llu:%llu\n", tmp->id, tmp->bytes_count, tmp->packets_count);
 				usock_sendstr(usock_client, buf);
 			}
 
