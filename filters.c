@@ -25,12 +25,31 @@ void filters_finish(filters_ctx *ctx) {
 	list_free(ctx->filters);
 }
 
-void filters_add(filters_ctx *ctx, const char *id, const char* bpf_str) {
+static void filters_bpfstr_unwind(filters_ctx *ctx, char *bpf_str)
+{
+	char token[1024 + strlen("${}")];
+
+	list_foreach(ctx->filters, f) {
+		struct filter *tmp = list_data(f, struct filter);
+
+		snprintf(token, sizeof(token), "${%s}", tmp->id);
+		strnrepl(token, tmp->bpf_str, bpf_str, 4096);
+	}
+}
+
+static void filters_bpfstr_unwind_finish(filters_ctx *ctx)
+{
+	list_foreach(ctx->filters, f)
+		free(list_data(f, struct filter)->bpf_str);
+}
+
+void filters_add(filters_ctx *ctx, const char *id, char *bpf_str) {
 	struct filter *instance = malloc(sizeof(*instance));
 
 	// TODO: document maximum len of id
 	strncpy(instance->id, id, 1023);
 	instance->id[1023] = '\0';
+	instance->bpf_str = bpf_str;
 	instance->bpf = malloc(sizeof(struct bpf_program));
 
 	instance->packets_count = 0;
@@ -79,17 +98,16 @@ void filters_load(filters_ctx *ctx, const char *filterfile_path, const char *mac
 		//
 		// TODO: here is dump!!
 		char *bpf = malloc(4096);
-		strncpy(bpf, bpf_tmp, 4096);
+		strncpy(bpf, bpf_tmp, 4095);
 		strnrepl("$MAC", mac_addr, bpf, 4096);
+		filters_bpfstr_unwind(ctx, bpf);
 
 		fprintf(stderr, "id: %s; bpf: \"%s\";\n", id, bpf);
 		
 		filters_add(ctx, id, bpf);
-
-		// the bpf is not needed anymore
-		free(bpf);
 	}
 
+	filters_bpfstr_unwind_finish(ctx);
 	free(line);
 	fclose(fp);
 }

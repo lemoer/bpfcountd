@@ -7,6 +7,7 @@
 
 struct filter {
 	char id[1024];
+	char *bpf_str;
 	struct bpf_program *bpf;
 	unsigned long long packets_count;
 	unsigned long long bytes_count;
@@ -19,7 +20,7 @@ typedef struct {
 
 void filters_init(filters_ctx *ctx, pcap_t* pcap_ctx);
 void filters_finish(filters_ctx *ctx);
-void filters_add(filters_ctx *ctx, const char *id, const char* bpf_str);
+void filters_add(filters_ctx *ctx, const char *id, char *bpf_str);
 void filters_load(filters_ctx *ctx, const char *filterfile_path, const char* mac_addr);
 
 void filters_process(filters_ctx *ctx, const struct pcap_pkthdr *pkthdr, const u_char *packet);
