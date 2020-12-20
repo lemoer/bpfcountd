@@ -1,14 +1,14 @@
-CC=gcc
+CC?=gcc
 
-CFLAGS=-Wall -Werror -ggdb
-LDFLAGS=-lpcap
+CFLAGS+=-Wall -Werror -ggdb
+LDFLAGS?=-lpcap
 NAME=bpfcountd
 PREFIX?=/usr/local
 
 CONFDIR?=${PREFIX}/etc/bpfcountd
 
 bpfcountd: main.o list.o usock.o filters.o util.o
-	$(CC) main.o list.o usock.o filters.o util.o -o ${NAME} ${LDFLAGS}
+	$(CC) ${CFLAGS} main.o list.o usock.o filters.o util.o -o ${NAME} ${LDFLAGS}
 
 all: test bpfcountd
 
