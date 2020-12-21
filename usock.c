@@ -2,14 +2,16 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/epoll.h> // for epoll_ctl(), struct epoll_event
 #include <errno.h>
 
 
 #include "usock.h"
 
-int usock_prepare(const char *path) {
+int usock_prepare(const char *path, const int epoll_fd) {
 	int sock;
 	struct sockaddr_un local;
+	struct epoll_event event;
 	
 	if ((sock = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0)) == -1) {
 		perror("socket");
@@ -32,6 +34,15 @@ int usock_prepare(const char *path) {
 
 	if(listen(sock, 5) == -1) {
 		perror("listen");
+		exit(1);
+	}
+
+	memset(&event, 0, sizeof(event));
+	event.events = EPOLLIN;
+	event.data.ptr = NULL;
+
+	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sock, &event)) {
+		fprintf(stderr, "Can't add pcap to epoll.\n");
 		exit(1);
 	}
 
