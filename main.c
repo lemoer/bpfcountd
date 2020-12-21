@@ -24,47 +24,9 @@ struct config {
 typedef struct {
 	struct config config;
 	filters_ctx filters_ctx;
-
-	pcap_t *pcap_ctx;
-	int fd;
 } bpfcountd_ctx;
 
-
-void prepare_pcap(bpfcountd_ctx *ctx, const char* device, int epoll_fd) {
-	struct epoll_event event;
-	char errbuf[PCAP_ERRBUF_SIZE];
-
-	memset(&errbuf, 0, sizeof(errbuf));
-
-	ctx->pcap_ctx = pcap_open_live(device, BUFSIZ, 1, 1000, errbuf);
-	// TODO: there could be a warning in errbuf even if handle != NULL
-	if (!ctx->pcap_ctx) {
-		fprintf(stderr, "Couldn't open device %s\n", errbuf);
-		exit(1);
-	}
-
-	if (pcap_setnonblock(ctx->pcap_ctx, 1, errbuf) == PCAP_ERROR) {
-		fprintf(stderr, "Can't set pcap handler nonblocking.\n");
-		exit(1);
-	}
-
-	ctx->fd = pcap_get_selectable_fd(ctx->pcap_ctx);
-	if (ctx->fd == PCAP_ERROR) {
-		fprintf(stderr, "Can't get file descriptor from pcap handler.");
-		exit(1);
-	}
-
-	memset(&event, 0, sizeof(event));
-	event.events = EPOLLIN;
-	event.data.ptr = ctx->pcap_ctx;
-
-	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, ctx->fd, &event)) {
-		fprintf(stderr, "Can't add pcap to epoll.\n");
-		exit(1);
-	}
-
-	fprintf(stderr, "Device: %s\n", device);
-}
+bpfcountd_ctx ctx;
 
 void help(const char* path) {
 	fprintf(stderr, "%s -i <interface> -f <filterfile> [-u <unixpath>] [-h]\n\n", path);
@@ -126,37 +88,25 @@ void prepare_config(struct config *cfg, int argc, char *argv[]){
 }
 
 
-void callback(u_char *ptr, const struct pcap_pkthdr *pkthdr, const u_char *packet)
-{
-	bpfcountd_ctx *ctx = (bpfcountd_ctx *) ptr;
-	filters_process(&ctx->filters_ctx, pkthdr, packet);
-}
-
 int term = 0;
 
 void sigint_handler(int signo) {
 	term = 1;
+	filters_break(&ctx.filters_ctx);
 }
 
 void bpfcountd_init(bpfcountd_ctx *ctx, int argc, char *argv[], int epoll_fd) {
 	prepare_config(&ctx->config, argc, argv);
 
-	// get a pcap handle
-	prepare_pcap(ctx, ctx->config.device, epoll_fd);
-
 	// initialize the filter unit
-	filters_init(&ctx->filters_ctx, ctx->pcap_ctx);
+	filters_init(&ctx->filters_ctx);
 	filters_load(
 		&ctx->filters_ctx,
 		ctx->config.filters_path,
-		ctx->config.mac_addr
+		ctx->config.mac_addr,
+		ctx->config.device,
+		epoll_fd
 	);
-}
-
-void bpfcountd_finish(bpfcountd_ctx *ctx) {
-	close(ctx->fd);
-	pcap_close(ctx->pcap_ctx);
-	filters_finish(&ctx->filters_ctx);
 }
 
 int main(int argc, char *argv[]) {
@@ -166,8 +116,6 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Can't create epoll file descriptor.\n");
 		exit(1);
 	}
-
-	bpfcountd_ctx ctx = {};
 
 	bpfcountd_init(&ctx, argc, argv, epoll_fd);
 
@@ -183,17 +131,23 @@ int main(int argc, char *argv[]) {
 	while(!term) {
 		int ev_count = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
 
-		for(int i = 0; i < ev_count; i++) {
-			pcap_t *pcap_ctx = events[i].data.ptr;
+		if (term)
+			break;
 
-			if (pcap_ctx) {
-				int res = pcap_dispatch(pcap_ctx, 100, callback, (u_char *) &ctx);
-				if (res == -1) {
-					printf("ERROR: %s\n", pcap_geterr(pcap_ctx));
+		for(int i = 0; i < ev_count; i++) {
+			struct filter *filter = events[i].data.ptr;
+
+			if (filter) {
+				int res = pcap_dispatch(filter->pcap_ctx, 100, filters_process, (u_char *) filter);
+				switch (res) {
+				case PCAP_ERROR:
+					printf("ERROR: %s\n", pcap_geterr(filter->pcap_ctx));
 					result = 1;
+					/* fall through */
+				case PCAP_ERROR_BREAK:
 					break;
 				}
-			// pcap_ctx == NULL indicates unix socket event
+			// filter == NULL indicates unix socket event
 			} else if ((usock_client = usock_accept(usock)) != -1) {
 				list_foreach(ctx.filters_ctx.filters, f) {
 					struct filter *tmp = list_data(f, struct filter);
@@ -210,10 +164,12 @@ int main(int argc, char *argv[]) {
 
 	}
 
+	fprintf(stderr, "Shutting down...\n");
 	usock_finish(usock);
 	unlink(ctx.config.usock_path);
-	bpfcountd_finish(&ctx);
+	filters_finish(&ctx.filters_ctx);
 	close(epoll_fd);
+	fprintf(stderr, "Shutdown finished, bye\n");
 
 	return result;
 }
