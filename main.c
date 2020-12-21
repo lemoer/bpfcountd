@@ -3,12 +3,16 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/epoll.h> // for epoll_create1(), epoll_ctl(), struct epoll_event
 
 #include "util.h"
 #include "filters.h"
 #include "usock.h"
 #include "list.h"
 
+#define MAX_EVENTS 32
+
+struct epoll_event events[MAX_EVENTS];
 
 struct config {
 	const char *device;       // TODO: rename
@@ -22,10 +26,12 @@ typedef struct {
 	filters_ctx filters_ctx;
 
 	pcap_t *pcap_ctx;
+	int fd;
 } bpfcountd_ctx;
 
 
-void prepare_pcap(bpfcountd_ctx *ctx, const char* device) {
+void prepare_pcap(bpfcountd_ctx *ctx, const char* device, int epoll_fd) {
+	struct epoll_event event;
 	char errbuf[PCAP_ERRBUF_SIZE];
 
 	memset(&errbuf, 0, sizeof(errbuf));
@@ -34,6 +40,26 @@ void prepare_pcap(bpfcountd_ctx *ctx, const char* device) {
 	// TODO: there could be a warning in errbuf even if handle != NULL
 	if (!ctx->pcap_ctx) {
 		fprintf(stderr, "Couldn't open device %s\n", errbuf);
+		exit(1);
+	}
+
+	if (pcap_setnonblock(ctx->pcap_ctx, 1, errbuf) == PCAP_ERROR) {
+		fprintf(stderr, "Can't set pcap handler nonblocking.\n");
+		exit(1);
+	}
+
+	ctx->fd = pcap_get_selectable_fd(ctx->pcap_ctx);
+	if (ctx->fd == PCAP_ERROR) {
+		fprintf(stderr, "Can't get file descriptor from pcap handler.");
+		exit(1);
+	}
+
+	memset(&event, 0, sizeof(event));
+	event.events = EPOLLIN;
+	event.data.ptr = ctx->pcap_ctx;
+
+	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, ctx->fd, &event)) {
+		fprintf(stderr, "Can't add pcap to epoll.\n");
 		exit(1);
 	}
 
@@ -112,11 +138,11 @@ void sigint_handler(int signo) {
 	term = 1;
 }
 
-void bpfcountd_init(bpfcountd_ctx *ctx, int argc, char *argv[]) {
+void bpfcountd_init(bpfcountd_ctx *ctx, int argc, char *argv[], int epoll_fd) {
 	prepare_config(&ctx->config, argc, argv);
 
 	// get a pcap handle
-	prepare_pcap(ctx, ctx->config.device);
+	prepare_pcap(ctx, ctx->config.device, epoll_fd);
 
 	// initialize the filter unit
 	filters_init(&ctx->filters_ctx, ctx->pcap_ctx);
@@ -128,16 +154,24 @@ void bpfcountd_init(bpfcountd_ctx *ctx, int argc, char *argv[]) {
 }
 
 void bpfcountd_finish(bpfcountd_ctx *ctx) {
+	close(ctx->fd);
 	pcap_close(ctx->pcap_ctx);
 	filters_finish(&ctx->filters_ctx);
 }
 
 int main(int argc, char *argv[]) {
+	int epoll_fd = epoll_create1(0);
+
+	if (epoll_fd < 0) {
+		fprintf(stderr, "Can't create epoll file descriptor.\n");
+		exit(1);
+	}
+
 	bpfcountd_ctx ctx = {};
 
-	bpfcountd_init(&ctx, argc, argv);
+	bpfcountd_init(&ctx, argc, argv, epoll_fd);
 
-	int usock = usock_prepare(ctx.config.usock_path);
+	int usock = usock_prepare(ctx.config.usock_path, epoll_fd);
 	int usock_client;
 	int result = 0;
 
@@ -147,30 +181,39 @@ int main(int argc, char *argv[]) {
 
 	// TODO: find out if the method drops packets
 	while(!term) {
-		int res = pcap_dispatch(ctx.pcap_ctx, 100, callback, (u_char *) &ctx);
-		if (res == -1) {
-			printf("ERROR: %s\n", pcap_geterr(ctx.pcap_ctx));
-			result = 1;
-			break;
-		}
+		int ev_count = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
 
-		if((usock_client = usock_accept(usock)) != -1) {
+		for(int i = 0; i < ev_count; i++) {
+			pcap_t *pcap_ctx = events[i].data.ptr;
 
-			list_foreach(ctx.filters_ctx.filters, f) {
-				struct filter *tmp = list_data(f, struct filter);
-				char buf[1067];
-				memset(buf, 0x00, sizeof(buf));
+			if (pcap_ctx) {
+				int res = pcap_dispatch(pcap_ctx, 100, callback, (u_char *) &ctx);
+				if (res == -1) {
+					printf("ERROR: %s\n", pcap_geterr(pcap_ctx));
+					result = 1;
+					break;
+				}
+			// pcap_ctx == NULL indicates unix socket event
+			} else if ((usock_client = usock_accept(usock)) != -1) {
+				list_foreach(ctx.filters_ctx.filters, f) {
+					struct filter *tmp = list_data(f, struct filter);
+					char buf[1067];
+					memset(buf, 0x00, sizeof(buf));
 
-				snprintf(buf, 1067, "%s:%llu:%llu\n", tmp->id, tmp->bytes_count, tmp->packets_count);
-				usock_sendstr(usock_client, buf);
+					snprintf(buf, 1067, "%s:%llu:%llu\n", tmp->id, tmp->bytes_count, tmp->packets_count);
+					usock_sendstr(usock_client, buf);
+				}
+
+				usock_finish(usock_client);
 			}
-
-			usock_finish(usock_client);
 		}
+
 	}
 
 	usock_finish(usock);
 	unlink(ctx.config.usock_path);
 	bpfcountd_finish(&ctx);
+	close(epoll_fd);
+
 	return result;
 }
