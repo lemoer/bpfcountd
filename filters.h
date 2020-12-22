@@ -17,6 +17,7 @@ struct filter {
 typedef struct {
 	pcap_t *pcap_ctx;
 	struct list *filters;
+	int count;
 } filters_ctx;
 
 void filters_init(filters_ctx *ctx);

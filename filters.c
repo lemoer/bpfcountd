@@ -4,25 +4,53 @@
 #include <stdlib.h>
 #include <sys/epoll.h> // for epoll_ctl(), struct epoll_event
 #include <unistd.h>
+#include <pthread.h>
 
 #include "util.h"
 
 
 void filters_init(filters_ctx *ctx) {
 	ctx->filters = list_new();
+	ctx->count = 0;
+}
+
+void *filters_finish_thread(void *args) {
+	struct filter *filter = args;
+
+	close(filter->fd);
+	pcap_close(filter->pcap_ctx);
+	filter->pcap_ctx = NULL;
+
+	return NULL;
 }
 
 void filters_finish(filters_ctx *ctx) {
+	pthread_t *id = calloc(ctx->count, sizeof(*id));
+	int i = 0, j = 0;
+
+	// parallelize shutdown, pcap_close() is slow unfortunately...
+	if (id) {
+		list_foreach(ctx->filters, f) {
+			struct filter *tmp = list_data(f, struct filter);
+
+			pthread_create(&id[i++], NULL, &filters_finish_thread, tmp);
+		}
+	}
 
 	// free the filters
-	list_foreach(ctx->filters, f) {
-		struct filter *tmp = list_data(f, struct filter);
+	list_foreach(ctx->filters, f2) {
+		struct filter *tmp = list_data(f2, struct filter);
 
-		close(tmp->fd);
-		pcap_close(tmp->pcap_ctx);
+		pthread_join(id[j++], NULL);
+
+		// thread creation might have failed
+		if (tmp->pcap_ctx)
+			filters_finish_thread(tmp);
+
 		free(tmp);
 	}
 
+	free(id);
 	list_free(ctx->filters);
 }
 
@@ -128,6 +156,7 @@ void filters_add(filters_ctx *ctx, const char *id, char *bpf_str, const char* de
 	filters_prepare_pcap(instance, device, epoll_fd);
 
 	list_insert(ctx->filters, instance);
+	ctx->count++;
 }
 
 void filters_load(filters_ctx *ctx, const char *filterfile_path, const char *mac_addr, const char* device, int epoll_fd) {
