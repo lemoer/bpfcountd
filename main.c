@@ -3,12 +3,16 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/epoll.h> // for epoll_create1(), epoll_ctl(), struct epoll_event
 
 #include "util.h"
 #include "filters.h"
 #include "usock.h"
 #include "list.h"
 
+#define MAX_EVENTS 32
+
+struct epoll_event events[MAX_EVENTS];
 
 struct config {
 	const char *device;       // TODO: rename
@@ -20,25 +24,9 @@ struct config {
 typedef struct {
 	struct config config;
 	filters_ctx filters_ctx;
-
-	pcap_t *pcap_ctx;
 } bpfcountd_ctx;
 
-
-void prepare_pcap(bpfcountd_ctx *ctx, const char* device) {
-	char errbuf[PCAP_ERRBUF_SIZE];
-
-	memset(&errbuf, 0, sizeof(errbuf));
-
-	ctx->pcap_ctx = pcap_open_live(device, BUFSIZ, 1, 1000, errbuf);
-	// TODO: there could be a warning in errbuf even if handle != NULL
-	if (!ctx->pcap_ctx) {
-		fprintf(stderr, "Couldn't open device %s\n", errbuf);
-		exit(1);
-	}
-
-	fprintf(stderr, "Device: %s\n", device);
-}
+bpfcountd_ctx ctx;
 
 void help(const char* path) {
 	fprintf(stderr, "%s -i <interface> -f <filterfile> [-u <unixpath>] [-h]\n\n", path);
@@ -100,44 +88,38 @@ void prepare_config(struct config *cfg, int argc, char *argv[]){
 }
 
 
-void callback(u_char *ptr, const struct pcap_pkthdr *pkthdr, const u_char *packet)
-{
-	bpfcountd_ctx *ctx = (bpfcountd_ctx *) ptr;
-	filters_process(&ctx->filters_ctx, pkthdr, packet);
-}
-
 int term = 0;
 
 void sigint_handler(int signo) {
 	term = 1;
+	filters_break(&ctx.filters_ctx);
 }
 
-void bpfcountd_init(bpfcountd_ctx *ctx, int argc, char *argv[]) {
+void bpfcountd_init(bpfcountd_ctx *ctx, int argc, char *argv[], int epoll_fd) {
 	prepare_config(&ctx->config, argc, argv);
 
-	// get a pcap handle
-	prepare_pcap(ctx, ctx->config.device);
-
 	// initialize the filter unit
-	filters_init(&ctx->filters_ctx, ctx->pcap_ctx);
+	filters_init(&ctx->filters_ctx);
 	filters_load(
 		&ctx->filters_ctx,
 		ctx->config.filters_path,
-		ctx->config.mac_addr
+		ctx->config.mac_addr,
+		ctx->config.device,
+		epoll_fd
 	);
 }
 
-void bpfcountd_finish(bpfcountd_ctx *ctx) {
-	pcap_close(ctx->pcap_ctx);
-	filters_finish(&ctx->filters_ctx);
-}
-
 int main(int argc, char *argv[]) {
-	bpfcountd_ctx ctx = {};
+	int epoll_fd = epoll_create1(0);
 
-	bpfcountd_init(&ctx, argc, argv);
+	if (epoll_fd < 0) {
+		fprintf(stderr, "Can't create epoll file descriptor.\n");
+		exit(1);
+	}
 
-	int usock = usock_prepare(ctx.config.usock_path);
+	bpfcountd_init(&ctx, argc, argv, epoll_fd);
+
+	int usock = usock_prepare(ctx.config.usock_path, epoll_fd);
 	int usock_client;
 	int result = 0;
 
@@ -147,30 +129,47 @@ int main(int argc, char *argv[]) {
 
 	// TODO: find out if the method drops packets
 	while(!term) {
-		int res = pcap_dispatch(ctx.pcap_ctx, 100, callback, (u_char *) &ctx);
-		if (res == -1) {
-			printf("ERROR: %s\n", pcap_geterr(ctx.pcap_ctx));
-			result = 1;
+		int ev_count = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+
+		if (term)
 			break;
-		}
 
-		if((usock_client = usock_accept(usock)) != -1) {
+		for(int i = 0; i < ev_count; i++) {
+			struct filter *filter = events[i].data.ptr;
 
-			list_foreach(ctx.filters_ctx.filters, f) {
-				struct filter *tmp = list_data(f, struct filter);
-				char buf[1067];
-				memset(buf, 0x00, sizeof(buf));
+			if (filter) {
+				int res = pcap_dispatch(filter->pcap_ctx, 100, filters_process, (u_char *) filter);
+				switch (res) {
+				case PCAP_ERROR:
+					printf("ERROR: %s\n", pcap_geterr(filter->pcap_ctx));
+					result = 1;
+					/* fall through */
+				case PCAP_ERROR_BREAK:
+					break;
+				}
+			// filter == NULL indicates unix socket event
+			} else if ((usock_client = usock_accept(usock)) != -1) {
+				list_foreach(ctx.filters_ctx.filters, f) {
+					struct filter *tmp = list_data(f, struct filter);
+					char buf[1067];
+					memset(buf, 0x00, sizeof(buf));
 
-				snprintf(buf, 1067, "%s:%llu:%llu\n", tmp->id, tmp->bytes_count, tmp->packets_count);
-				usock_sendstr(usock_client, buf);
+					snprintf(buf, 1067, "%s:%llu:%llu\n", tmp->id, tmp->bytes_count, tmp->packets_count);
+					usock_sendstr(usock_client, buf);
+				}
+
+				usock_finish(usock_client);
 			}
-
-			usock_finish(usock_client);
 		}
+
 	}
 
+	fprintf(stderr, "Shutting down...\n");
 	usock_finish(usock);
 	unlink(ctx.config.usock_path);
-	bpfcountd_finish(&ctx);
+	filters_finish(&ctx.filters_ctx);
+	close(epoll_fd);
+	fprintf(stderr, "Shutdown finished, bye\n");
+
 	return result;
 }
