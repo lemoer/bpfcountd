@@ -12,7 +12,7 @@
 
 #define MAX_EVENTS 32
 
-struct epoll_event events[MAX_EVENTS];
+static struct epoll_event events[MAX_EVENTS];
 
 struct config {
 	const char *device;       // TODO: rename
@@ -30,7 +30,7 @@ typedef struct {
 } bpfcountd_ctx;
 
 
-void prepare_pcap(bpfcountd_ctx *ctx, const char* device, int epoll_fd) {
+static void prepare_pcap(bpfcountd_ctx *ctx, const char* device, int epoll_fd) {
 	struct epoll_event event;
 	char errbuf[PCAP_ERRBUF_SIZE];
 
@@ -66,7 +66,7 @@ void prepare_pcap(bpfcountd_ctx *ctx, const char* device, int epoll_fd) {
 	fprintf(stderr, "Device: %s\n", device);
 }
 
-void help(const char* path) {
+static void help(const char* path) {
 	fprintf(stderr, "%s -i <interface> -f <filterfile> [-u <unixpath>] [-h]\n\n", path);
 
 	fprintf(stderr, "-f <filterfile>       a the main file where each line contains an id and a bpf\n");
@@ -74,7 +74,7 @@ void help(const char* path) {
 	fprintf(stderr, "-u <unixpath>         path to the unix info socket (default is ./test.sock)\n");
 }
 
-void prepare_config(struct config *cfg, int argc, char *argv[]){
+static void prepare_config(struct config *cfg, int argc, char *argv[]) {
 	int c;
 
 	// default settings
@@ -126,19 +126,20 @@ void prepare_config(struct config *cfg, int argc, char *argv[]){
 }
 
 
-void callback(u_char *ptr, const struct pcap_pkthdr *pkthdr, const u_char *packet)
+static void callback(u_char *ptr, const struct pcap_pkthdr *pkthdr, const u_char *packet)
 {
 	bpfcountd_ctx *ctx = (bpfcountd_ctx *) ptr;
 	filters_process(&ctx->filters_ctx, pkthdr, packet);
 }
 
-int term = 0;
+static int term = 0;
 
-void sigint_handler(int signo) {
+static void sigint_handler(int signo) {
 	term = 1;
 }
 
-void bpfcountd_init(bpfcountd_ctx *ctx, int argc, char *argv[], int epoll_fd) {
+static void
+bpfcountd_init(bpfcountd_ctx *ctx, int argc, char *argv[], int epoll_fd) {
 	prepare_config(&ctx->config, argc, argv);
 
 	// get a pcap handle
@@ -153,7 +154,7 @@ void bpfcountd_init(bpfcountd_ctx *ctx, int argc, char *argv[], int epoll_fd) {
 	);
 }
 
-void bpfcountd_finish(bpfcountd_ctx *ctx) {
+static void bpfcountd_finish(bpfcountd_ctx *ctx) {
 	close(ctx->fd);
 	pcap_close(ctx->pcap_ctx);
 	filters_finish(&ctx->filters_ctx);

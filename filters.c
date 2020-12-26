@@ -43,7 +43,7 @@ static void filters_bpfstr_unwind_finish(filters_ctx *ctx)
 		free(list_data(f, struct filter)->bpf_str);
 }
 
-void filters_add(filters_ctx *ctx, const char *id, char *bpf_str) {
+static void filters_add(filters_ctx *ctx, const char *id, char *bpf_str) {
 	struct filter *instance = malloc(sizeof(*instance));
 
 	// TODO: document maximum len of id
