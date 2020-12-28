@@ -51,6 +51,12 @@ icmp6:100:4
 arp-reply-gratious:120:30
 ```
 
+**Kernel Prefilter**
+
+To reduce the impact on unrelated traffic, a prefilter should be configured.
+If set only packets matching the prefilter will be copied to userspace for
+further examination by bpfcountd.
+
 **Use with prometheus node_exporter:**
 
 Add a crontab:
@@ -78,8 +84,9 @@ $> cp dist/systemd@.service /lib/systemd/system/bpfcountd@.service
 
 ``` shell
 $> bpfcountd -h
-bpfcountd -i <interface> -f <filterfile> [-u <unixpath>] [-h]
+bpfcountd -i <interface> [-F <prefilter-expr>] -f <filterfile> [-u <unixpath>] [-h]
 
+-F <prefilter-expr>   an optional prefilter BPF expression, installed in the kernel
 -f <filterfile>       a the main file where each line contains an id and a bpf
                       filter, seperated by a semicolon
 -u <unixpath>         path to the unix info socket (default is ./test.sock)

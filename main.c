@@ -18,6 +18,7 @@ struct config {
 	const char *device;       // TODO: rename
 	const char *filters_path; // TODO: rename
 	const char *usock_path;
+	const char *prefilter_str;
 	char mac_addr[MAC_STRLEN];
 };
 
@@ -31,6 +32,7 @@ typedef struct {
 
 
 static void prepare_pcap(bpfcountd_ctx *ctx, const char* device, int epoll_fd) {
+	struct bpf_program bpf;
 	struct epoll_event event;
 	char errbuf[PCAP_ERRBUF_SIZE];
 
@@ -46,6 +48,26 @@ static void prepare_pcap(bpfcountd_ctx *ctx, const char* device, int epoll_fd) {
 	if (pcap_setnonblock(ctx->pcap_ctx, 1, errbuf) == PCAP_ERROR) {
 		fprintf(stderr, "Can't set pcap handler nonblocking.\n");
 		exit(1);
+	}
+
+	if (ctx->config.prefilter_str) {
+		if (pcap_compile(ctx->pcap_ctx, &bpf, ctx->config.prefilter_str,
+				 0, PCAP_NETMASK_UNKNOWN) == -1) {
+			fprintf(stderr, "Error at compiling bpf \"%s\": %s\n",
+				ctx->config.prefilter_str,
+				pcap_geterr(ctx->pcap_ctx));
+			exit(1);
+		}
+
+		if (pcap_setfilter(ctx->pcap_ctx, &bpf)) {
+			pcap_freecode(&bpf);
+			fprintf(stderr, "Can't set pcap filter \"%s\": %s\n",
+				ctx->config.prefilter_str,
+				pcap_geterr(ctx->pcap_ctx));
+			exit(1);
+		}
+
+		pcap_freecode(&bpf);
 	}
 
 	ctx->fd = pcap_get_selectable_fd(ctx->pcap_ctx);
@@ -67,8 +89,9 @@ static void prepare_pcap(bpfcountd_ctx *ctx, const char* device, int epoll_fd) {
 }
 
 static void help(const char* path) {
-	fprintf(stderr, "%s -i <interface> -f <filterfile> [-u <unixpath>] [-h]\n\n", path);
+	fprintf(stderr, "%s -i <interface> [-F <prefilter-expr>] -f <filterfile> [-u <unixpath>] [-h]\n\n", path);
 
+	fprintf(stderr, "-F <prefilter-expr>   an optional prefilter BPF expression, installed in the kernel\n");
 	fprintf(stderr, "-f <filterfile>       a the main file where each line contains an id and a bpf\n");
 	fprintf(stderr, "                      filter, seperated by a semicolon\n");
 	fprintf(stderr, "-u <unixpath>         path to the unix info socket (default is ./test.sock)\n");
@@ -82,9 +105,10 @@ static void prepare_config(struct config *cfg, int argc, char *argv[]) {
 	cfg->device = NULL;
 	cfg->filters_path = NULL;
 	cfg->usock_path = "test.sock";
+	cfg->prefilter_str = NULL;
 
 	opterr = 0;
-	while ((c = getopt(argc, argv, "hi:f:u:")) != -1) {
+	while ((c = getopt(argc, argv, "hi:F:f:u:")) != -1) {
 		switch (c) {
 		case 'i':
 			cfg->device = optarg;
@@ -94,6 +118,9 @@ static void prepare_config(struct config *cfg, int argc, char *argv[]) {
 			exit(0);
 		case 'u':
 			cfg->usock_path = optarg;
+			break;
+		case 'F':
+			cfg->prefilter_str = optarg;
 			break;
 		case 'f':
 			cfg->filters_path = optarg;
