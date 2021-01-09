@@ -1,7 +1,7 @@
 CC?=gcc
 
 CFLAGS+=-Wall -Werror -ggdb
-LDFLAGS?=-lpcap
+LDFLAGS+=-lpcap
 NAME=bpfcountd
 PREFIX?=/usr/local
 
