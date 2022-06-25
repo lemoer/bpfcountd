@@ -84,11 +84,13 @@ $> cp dist/systemd@.service /lib/systemd/system/bpfcountd@.service
 
 ``` shell
 $> bpfcountd -h
-bpfcountd -i <interface> [-F <prefilter-expr>] -f <filterfile> [-u <unixpath>] [-h]
+bpfcountd -i <interface> [-F <prefilter-expr>] -f <filterfile>
+          [-b <buffer-size>] [-u <unixpath>] [-h]
 
 -F <prefilter-expr>   an optional prefilter BPF expression, installed in the kernel
 -f <filterfile>       a the main file where each line contains an id and a bpf
                       filter, seperated by a semicolon
+-b <buffer-size>      size of the capture buffer in bytes (default: 2*1024*1024)
 -u <unixpath>         path to the unix info socket (default is ./test.sock)
 ```
 
