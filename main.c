@@ -1,3 +1,5 @@
+#include <errno.h>
+#include <limits.h>
 #include <pcap.h>
 #include <ctype.h>
 #include <signal.h>
@@ -19,6 +21,7 @@ struct config {
 	const char *filters_path; // TODO: rename
 	const char *usock_path;
 	const char *prefilter_str;
+	unsigned int buffer_size;
 	char mac_addr[MAC_STRLEN];
 };
 
@@ -38,15 +41,39 @@ static void prepare_pcap(bpfcountd_ctx *ctx, const char* device, int epoll_fd) {
 
 	memset(&errbuf, 0, sizeof(errbuf));
 
-	ctx->pcap_ctx = pcap_open_live(device, BUFSIZ, 1, 1000, errbuf);
+	ctx->pcap_ctx = pcap_create(device, errbuf);
 	// TODO: there could be a warning in errbuf even if handle != NULL
 	if (!ctx->pcap_ctx) {
 		fprintf(stderr, "Couldn't open device %s\n", errbuf);
 		exit(1);
 	}
 
+	if (pcap_set_snaplen(ctx->pcap_ctx, BUFSIZ)) {
+		fprintf(stderr, "Error at setting a snaplen of %u\n", BUFSIZ);
+		exit(1);
+	}
+
+	if (ctx->config.buffer_size) {
+		// default on Linux: 2*1024*1024 bytes
+		if (pcap_set_buffer_size(ctx->pcap_ctx,
+					 ctx->config.buffer_size)) {
+			fprintf(stderr, "Error at setting pcap buffer size\n");
+			exit(1);
+		}
+	}
+
+	if (pcap_set_timeout(ctx->pcap_ctx, 1000)) {
+		fprintf(stderr, "Error at setting pcap timeout\n");
+		exit(1);
+	}
+
 	if (pcap_setnonblock(ctx->pcap_ctx, 1, errbuf) == PCAP_ERROR) {
 		fprintf(stderr, "Can't set pcap handler nonblocking.\n");
+		exit(1);
+	}
+
+	if (pcap_activate(ctx->pcap_ctx)) {
+		fprintf(stderr, "Can't activate pcap handler.\n");
 		exit(1);
 	}
 
@@ -89,15 +116,19 @@ static void prepare_pcap(bpfcountd_ctx *ctx, const char* device, int epoll_fd) {
 }
 
 static void help(const char* path) {
-	fprintf(stderr, "%s -i <interface> [-F <prefilter-expr>] -f <filterfile> [-u <unixpath>] [-h]\n\n", path);
+	fprintf(stderr, "%s -i <interface> [-F <prefilter-expr>] -f <filterfile>\n", path);
+	fprintf(stderr, "%*s [-b <buffer-size>] [-u <unixpath>] [-h]\n\n", (int)strlen(path), "");
 
 	fprintf(stderr, "-F <prefilter-expr>   an optional prefilter BPF expression, installed in the kernel\n");
 	fprintf(stderr, "-f <filterfile>       a the main file where each line contains an id and a bpf\n");
 	fprintf(stderr, "                      filter, seperated by a semicolon\n");
+	fprintf(stderr, "-b <buffer-size>      size of the capture buffer in bytes (default: 2*1024*1024)\n");
 	fprintf(stderr, "-u <unixpath>         path to the unix info socket (default is ./test.sock)\n");
 }
 
 static void prepare_config(struct config *cfg, int argc, char *argv[]) {
+	char *endptr;
+	unsigned long buffer_size;
 	int c;
 
 	// default settings
@@ -106,9 +137,10 @@ static void prepare_config(struct config *cfg, int argc, char *argv[]) {
 	cfg->filters_path = NULL;
 	cfg->usock_path = "test.sock";
 	cfg->prefilter_str = NULL;
+	cfg->buffer_size = 0;
 
 	opterr = 0;
-	while ((c = getopt(argc, argv, "hi:F:f:u:")) != -1) {
+	while ((c = getopt(argc, argv, "hi:F:f:u:b:")) != -1) {
 		switch (c) {
 		case 'i':
 			cfg->device = optarg;
@@ -124,6 +156,16 @@ static void prepare_config(struct config *cfg, int argc, char *argv[]) {
 			break;
 		case 'f':
 			cfg->filters_path = optarg;
+			break;
+		case 'b':
+			errno = 0;
+			buffer_size = strtoul(optarg, &endptr, 10);
+			if (errno != 0 || endptr == optarg || buffer_size > UINT_MAX) {
+				fprintf(stderr, "Could not parse: -%c %s.\n", c, optarg);
+				exit(1);
+			}
+
+			cfg->buffer_size = buffer_size;
 			break;
 		case '?':
 			if (optopt == 'i')
